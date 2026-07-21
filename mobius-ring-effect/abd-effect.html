@@ -146,6 +146,43 @@
       color: var(--ink);
       font-size: 13px;
     }
+    .shape-map {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      margin: -4px 0 14px;
+      padding: 10px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .shape-map.is-open { display: flex; }
+    .shape-map .map-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .shape-map .swatch {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      border: 1px solid var(--border-strong);
+      flex-shrink: 0;
+    }
+    .shape-map .map-label {
+      min-width: 52px;
+      font-size: 12px;
+      color: var(--ink-muted);
+    }
+    .shape-map select {
+      flex: 1;
+      padding: 5px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border-strong);
+      background: #fff;
+      color: var(--ink);
+      font-size: 12px;
+    }
     .actions { margin-top: 22px; display: flex; flex-direction: column; gap: 8px; }
     .btn {
       padding: 11px 16px;
@@ -171,13 +208,13 @@
     <div class="preview-wrap">
       <canvas id="heroCanvas" width="1334" height="1000"></canvas>
       <div class="dir-hud">
-        <span>ABD：8 向倾斜 · 悬停 PXS+2 · 实心块 / X 切换</span>
+        <span>ABD：8 向倾斜 · 悬停 PXS+2 · 实心/X/空心方/空心圆 · 可按色分配</span>
         <strong id="dirVal">—</strong>
       </div>
     </div>
     <div class="controls">
       <h2>ABD 效果器</h2>
-      <p class="hint">基于 3D 环效果器复制。新增像素形态：实心块或 X 形。悬停仍全局 PXS+2（只加大色块）；离开后倾斜保持、像素恢复。</p>
+      <p class="hint">ABD 效果器：实心块 / X / 空心方 / 空心圆；也可按三色分别指定图形。悬停 PXS+2；离开后倾斜保持、像素恢复。</p>
       <div class="palette-swatches" aria-hidden="true">
         <span style="background:#90D8F8" title="浅蓝"></span>
         <span style="background:#3878B0" title="中蓝"></span>
@@ -220,10 +257,51 @@
       </div>
       <div class="row">
         <label>像素形态</label>
-        <select id="cellStyle">
+        <select id="cellMode">
+          <option value="uniform" selected>统一形态</option>
+          <option value="byColor">按颜色分配</option>
+        </select>
+      </div>
+      <div class="row" id="uniformShapeRow">
+        <label>统一图形</label>
+        <select id="uniformShape">
           <option value="block" selected>实心块</option>
           <option value="x">X 形</option>
+          <option value="square">空心正方形</option>
+          <option value="circle">空心正圆形</option>
         </select>
+      </div>
+      <div class="shape-map" id="shapeMap">
+        <div class="map-row">
+          <span class="swatch" style="background:#90D8F8"></span>
+          <span class="map-label">浅蓝</span>
+          <select id="shapePal0" data-pal="0">
+            <option value="block">实心块</option>
+            <option value="x">X 形</option>
+            <option value="square" selected>空心正方形</option>
+            <option value="circle">空心正圆形</option>
+          </select>
+        </div>
+        <div class="map-row">
+          <span class="swatch" style="background:#3878B0"></span>
+          <span class="map-label">深蓝</span>
+          <select id="shapePal1" data-pal="1">
+            <option value="block">实心块</option>
+            <option value="x" selected>X 形</option>
+            <option value="square">空心正方形</option>
+            <option value="circle">空心正圆形</option>
+          </select>
+        </div>
+        <div class="map-row">
+          <span class="swatch" style="background:#E06850"></span>
+          <span class="map-label">橙红</span>
+          <select id="shapePal2" data-pal="2">
+            <option value="block">实心块</option>
+            <option value="x">X 形</option>
+            <option value="square">空心正方形</option>
+            <option value="circle" selected>空心正圆形</option>
+          </select>
+        </div>
       </div>
       <div class="row">
         <label>暂停</label>
@@ -271,11 +349,17 @@
       bandW: 0.495,
       depthShade: 0.25,
       pxs: 6,
-      cellStyle: 'block', // 'block' | 'x'
+      cellMode: 'uniform', // 'uniform' | 'byColor'
+      uniformShape: 'block', // 'block' | 'x' | 'square' | 'circle'
+      // 默认按你的例子：浅蓝=空心方，深蓝=X，橙红=空心圆
+      colorShapes: ['square', 'x', 'circle'],
       pause: false,
       rotA: 0,
       viewA: 0
     };
+    const SHAPE_OPTS = ['block', 'x', 'square', 'circle'];
+    const PAL_KEYS = PAL.map(c => c[0] + ',' + c[1] + ',' + c[2]);
+    const palKeyToIndex = Object.fromEntries(PAL_KEYS.map((k, i) => [k, i]));
 
     /** 鼠标互动：进入预览区后按 8 向调整 tilt/roll；离开后保持姿态继续转 */
     const pointer = {
@@ -399,45 +483,84 @@
       return { cw, ch };
     }
 
-    /** 为每种调色板颜色预生成 X stamp，避免逐格 stroke */
-    function getXStamp(cellW, cellH, r, g, b){
+    /** 预生成图形 stamp：实心块 / X / 空心方 / 空心圆 */
+    function paintStamp(s, shape, cw, ch, r, g, b){
+      const pad = Math.max(0.75, Math.min(cw, ch) * 0.18);
+      const lw = Math.max(1, Math.min(cw, ch) * 0.24);
+      const color = 'rgb(' + r + ',' + g + ',' + b + ')';
+      s.clearRect(0, 0, cw, ch);
+      s.strokeStyle = color;
+      s.fillStyle = color;
+      s.lineWidth = lw;
+      s.lineCap = 'square';
+      s.lineJoin = 'miter';
+      if (shape === 'block') {
+        s.fillRect(0, 0, cw, ch);
+        return;
+      }
+      if (shape === 'x') {
+        s.beginPath();
+        s.moveTo(pad, pad);
+        s.lineTo(cw - pad, ch - pad);
+        s.moveTo(cw - pad, pad);
+        s.lineTo(pad, ch - pad);
+        s.stroke();
+        return;
+      }
+      if (shape === 'square') {
+        const side = Math.min(cw, ch) - pad * 2;
+        const ox = (cw - side) / 2;
+        const oy = (ch - side) / 2;
+        s.strokeRect(ox + lw / 2, oy + lw / 2, side - lw, side - lw);
+        return;
+      }
+      if (shape === 'circle') {
+        const rad = Math.max(1, Math.min(cw, ch) / 2 - pad - lw / 2);
+        s.beginPath();
+        s.arc(cw / 2, ch / 2, rad, 0, Math.PI * 2);
+        s.stroke();
+      }
+    }
+
+    function getCellStamp(shape, cellW, cellH, r, g, b){
       const cw = Math.max(2, Math.round(cellW));
       const ch = Math.max(2, Math.round(cellH));
-      const key = cw + 'x' + ch + ':' + r + ',' + g + ',' + b;
+      const key = shape + '|' + cw + 'x' + ch + ':' + r + ',' + g + ',' + b;
       let stamp = xStampCache.get(key);
       if (stamp) return stamp;
       stamp = document.createElement('canvas');
       stamp.width = cw;
       stamp.height = ch;
-      const s = stamp.getContext('2d');
-      const pad = Math.max(0.75, Math.min(cw, ch) * 0.18);
-      s.strokeStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
-      s.lineWidth = Math.max(1, Math.min(cw, ch) * 0.28);
-      s.lineCap = 'square';
-      s.beginPath();
-      s.moveTo(pad, pad);
-      s.lineTo(cw - pad, ch - pad);
-      s.moveTo(cw - pad, pad);
-      s.lineTo(pad, ch - pad);
-      s.stroke();
+      paintStamp(stamp.getContext('2d'), shape, cw, ch, r, g, b);
       xStampCache.set(key, stamp);
-      if (xStampCache.size > 48) {
+      if (xStampCache.size > 64) {
         const first = xStampCache.keys().next().value;
         xStampCache.delete(first);
       }
       return stamp;
     }
 
-    /** 将低分辨率图素以实心块或 X 画到主画布（device pixels） */
+    function shapeForRgb(r, g, b){
+      if (state.cellMode === 'uniform') return state.uniformShape;
+      const idx = palKeyToIndex[r + ',' + g + ',' + b];
+      if (idx == null) return 'block';
+      return state.colorShapes[idx] || 'block';
+    }
+
+    function usesStampBlit(){
+      if (state.cellMode === 'byColor') return true;
+      return state.uniformShape !== 'block';
+    }
+
+    /** 将低分辨率图素以选定图形画到主画布（device pixels） */
     function blitCells(srcCanvas, sw, sh){
       const cellW = canvas.width / sw;
       const cellH = canvas.height / sh;
-      if (state.cellStyle === 'block') {
+      if (!usesStampBlit()) {
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(srcCanvas, 0, 0, sw, sh, 0, 0, canvas.width, canvas.height);
         return;
       }
-      // X 形：读取每个非透明像素，贴对应颜色的 X stamp
       const sctx = srcCanvas.getContext('2d', { willReadFrequently: true });
       const id = sctx.getImageData(0, 0, sw, sh);
       const d = id.data;
@@ -445,7 +568,8 @@
         for (let x = 0; x < sw; x++) {
           const i = (y * sw + x) * 4;
           if (d[i + 3] < 8) continue;
-          const stamp = getXStamp(cellW, cellH, d[i], d[i + 1], d[i + 2]);
+          const shape = shapeForRgb(d[i], d[i + 1], d[i + 2]);
+          const stamp = getCellStamp(shape, cellW, cellH, d[i], d[i + 1], d[i + 2]);
           ctx.drawImage(stamp, Math.round(x * cellW), Math.round(y * cellH));
         }
       }
@@ -582,7 +706,7 @@
         // 粗网格也需带 alpha：从 off 缩放过的透明要保留——drawImage 会保留
         // 但 coarse 上透明像素 alpha 可能被插值；nearest 关闭平滑后通常 OK
         // X 模式需可读 ImageData：确保透明格 alpha=0
-        if (state.cellStyle === 'x') {
+        if (usesStampBlit()) {
           const cid = cC.getImageData(0, 0, cw, ch);
           const cd = cid.data;
           for (let i = 0; i < cd.length; i += 4) {
@@ -626,9 +750,31 @@
       state.pxs = (e.target.value|0);
       syncPxsHoverUI();
     };
-    document.getElementById('cellStyle').onchange = e => {
-      state.cellStyle = e.target.value === 'x' ? 'x' : 'block';
+
+    const uniformShapeRow = document.getElementById('uniformShapeRow');
+    const shapeMapEl = document.getElementById('shapeMap');
+    function syncShapeUI(){
+      const byColor = state.cellMode === 'byColor';
+      uniformShapeRow.style.display = byColor ? 'none' : 'flex';
+      shapeMapEl.classList.toggle('is-open', byColor);
+    }
+    function normalizeShape(v){
+      return SHAPE_OPTS.includes(v) ? v : 'block';
+    }
+    document.getElementById('cellMode').onchange = e => {
+      state.cellMode = e.target.value === 'byColor' ? 'byColor' : 'uniform';
+      syncShapeUI();
     };
+    document.getElementById('uniformShape').onchange = e => {
+      state.uniformShape = normalizeShape(e.target.value);
+    };
+    ['shapePal0', 'shapePal1', 'shapePal2'].forEach((id, i) => {
+      document.getElementById(id).onchange = e => {
+        state.colorShapes[i] = normalizeShape(e.target.value);
+      };
+    });
+    syncShapeUI();
+
     document.getElementById('pause').onchange = e => { state.pause = e.target.checked; };
     document.getElementById('previewBg').onchange = e => {
       const map = { white: '#fff', cream: '#E4E0D8', black: '#000' };
