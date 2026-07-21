@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Ring Effect — 效果器</title>
+  <style>
+    :root {
+      --bg: #E4E0D8;
+      --bg-light: #EBE8E2;
+      --bg-panel: #F4F1EB;
+      --ink: #2d2d2d;
+      --ink-muted: #5a5a5a;
+      --blue: #007BB0;
+      --blue-light: #90D8F8;
+      --red: #F56046;
+      --border: rgba(0, 123, 176, 0.28);
+      --border-strong: rgba(0, 123, 176, 0.45);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      color: var(--ink);
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 0%, rgba(144, 216, 248, 0.22), transparent 55%),
+        radial-gradient(ellipse 70% 50% at 100% 100%, rgba(245, 96, 70, 0.08), transparent 50%),
+        var(--bg);
+      padding: 20px;
+    }
+    .wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+      align-items: flex-start;
+    }
+    .preview-wrap {
+      flex: 1 1 480px;
+      max-width: 691px;
+      background: var(--bg-panel);
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 0 rgba(255,255,255,0.6) inset;
+    }
+    #heroCanvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 667 / 500;
+      border-radius: 4px;
+      background: #fff;
+      cursor: crosshair;
+      touch-action: none;
+    }
+    #heroCanvas.is-hover {
+      cursor: grab;
+    }
+    .dir-hud {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--ink-muted);
+    }
+    .dir-hud strong {
+      color: var(--blue);
+      font-variant-numeric: tabular-nums;
+      min-width: 3.5em;
+      text-align: right;
+    }
+    .controls {
+      flex: 1 1 260px;
+      max-width: 360px;
+      padding: 20px;
+      background: var(--bg-panel);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 0 rgba(255,255,255,0.6) inset;
+    }
+    .controls h2 {
+      font-size: 15px;
+      margin-bottom: 4px;
+      color: var(--blue);
+      letter-spacing: 0.5px;
+      font-weight: 700;
+    }
+    .controls .hint {
+      font-size: 11px;
+      color: var(--ink-muted);
+      margin-bottom: 18px;
+      line-height: 1.4;
+    }
+    .palette-swatches {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 18px;
+    }
+    .palette-swatches span {
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      border: 1px solid var(--border-strong);
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .row label {
+      flex-shrink: 0;
+      color: var(--ink);
+      font-weight: 500;
+      min-width: 88px;
+    }
+    .row input[type="range"] {
+      flex: 1;
+      min-width: 0;
+      accent-color: var(--blue);
+    }
+    .row .val {
+      min-width: 42px;
+      text-align: right;
+      color: var(--blue);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--blue);
+    }
+    .row select {
+      flex: 1;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border-strong);
+      background: #fff;
+      color: var(--ink);
+      font-size: 13px;
+    }
+    .actions { margin-top: 22px; display: flex; flex-direction: column; gap: 8px; }
+    .btn {
+      padding: 11px 16px;
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .btn:hover { background: var(--bg-light); }
+    .btn.primary {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: #fff;
+    }
+    .btn.primary:hover { filter: brightness(1.08); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="preview-wrap">
+      <canvas id="heroCanvas" width="1334" height="1000"></canvas>
+      <div class="dir-hud">
+        <span>鼠标互动：8 向倾斜 · 悬停像素块 +2 · 离开后倾斜保持、像素恢复</span>
+        <strong id="dirVal">—</strong>
+      </div>
+    </div>
+    <div class="controls">
+      <h2>3D 环效果器</h2>
+      <p class="hint">配色对齐 mob.exchange 首页。预览区悬停：8 向调倾斜；像素块全局 +2（只加大色块，环带不跟着变粗）；离开后倾斜保持、像素恢复默认。</p>
+      <div class="palette-swatches" aria-hidden="true">
+        <span style="background:#90D8F8" title="浅蓝"></span>
+        <span style="background:#3878B0" title="中蓝"></span>
+        <span style="background:#E06850" title="橙红"></span>
+      </div>
+      <div class="row">
+        <label>倾斜角 TILT</label>
+        <input type="range" id="tilt" min="0" max="150" value="75">
+        <span class="val" id="tiltVal">0.75</span>
+      </div>
+      <div class="row">
+        <label>自转速度</label>
+        <input type="range" id="rotSpeed" min="0" max="30" value="12">
+        <span class="val" id="rotSpeedVal">0.012</span>
+      </div>
+      <div class="row">
+        <label>整体旋转速度</label>
+        <input type="range" id="viewSpeed" min="0" max="15" value="5">
+        <span class="val" id="viewSpeedVal">0.005</span>
+      </div>
+      <div class="row">
+        <label>缩放 scale</label>
+        <input type="range" id="scale" min="20" max="60" value="40">
+        <span class="val" id="scaleVal">0.40</span>
+      </div>
+      <div class="row">
+        <label>带宽系数</label>
+        <input type="range" id="bandW" min="35" max="70" value="50">
+        <span class="val" id="bandWVal">0.50</span>
+      </div>
+      <div class="row">
+        <label>背面加深</label>
+        <input type="range" id="depthShade" min="0" max="50" value="25">
+        <span class="val" id="depthShadeVal">0.25</span>
+      </div>
+      <div class="row">
+        <label>像素块 PXS</label>
+        <input type="range" id="pxs" min="3" max="12" value="6">
+        <span class="val" id="pxsVal">6</span>
+      </div>
+      <div class="row">
+        <label>暂停</label>
+        <input type="checkbox" id="pause">
+      </div>
+      <div class="row">
+        <label>预览背景</label>
+        <select id="previewBg">
+          <option value="white" selected>白色</option>
+          <option value="cream">米色 (站点)</option>
+          <option value="black">黑色</option>
+        </select>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn primary" id="exportBtn">导出当前画面 (PNG 透明背景)</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    const canvas = document.getElementById('heroCanvas');
+    const ctx = canvas.getContext('2d');
+    const dpr = 2;
+    const w = 667, h = 500;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    /** 与 mob.exchange 首页 canvas 采样一致：浅蓝 / 中蓝 / 橙红 */
+    const PAL = [
+      [144, 216, 248], // light blue #90D8F8
+      [56, 120, 176],  // mid blue   #3878B0
+      [224, 104, 80]   // coral      #E06850
+    ];
+    const BGC = [228, 224, 216];
+    const RS = 72, WS = 10;
+
+    const state = {
+      tilt: 0.75,
+      roll: 0,
+      rotSpeed: 0.012,
+      viewSpeed: 0.0048,
+      scale: 0.4,
+      bandW: 0.495,
+      depthShade: 0.25,
+      pxs: 6,
+      pause: false,
+      rotA: 0,
+      viewA: 0
+    };
+
+    /** 鼠标互动：进入预览区后按 8 向调整 tilt/roll；离开后保持姿态继续转 */
+    const pointer = {
+      active: false,
+      lastX: 0,
+      lastY: 0,
+      dir: '—',
+      // 目标倾斜（由移动方向累积 / 位置共同驱动）
+      targetTilt: state.tilt,
+      targetRoll: 0
+    };
+    const DIR_LABELS = ['右', '右下', '下', '左下', '左', '左上', '上', '右上'];
+    const TILT_MIN = 0, TILT_MAX = 1.5;
+    const ROLL_MAX = 0.85;
+    const MOVE_THRESH = 2.5; // px，低于此视为未移动
+    const PXS_MIN = 3, PXS_MAX = 12, PXS_HOVER_BOOST = 2;
+    const dirValEl = document.getElementById('dirVal');
+    const tiltInput = document.getElementById('tilt');
+    const tiltValEl = document.getElementById('tiltVal');
+    const pxsValEl = document.getElementById('pxsVal');
+
+    function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+    function lerp(a, b, t){ return a + (b - a) * t; }
+
+    /** 滑条值为几何/默认像素；悬停时仅显示层加大色块，不改环带几何 */
+    function displayPxs(){
+      if (!pointer.active) return state.pxs;
+      return clamp(state.pxs + PXS_HOVER_BOOST, PXS_MIN, PXS_MAX);
+    }
+
+    function syncPxsHoverUI(){
+      const base = state.pxs;
+      const eff = displayPxs();
+      pxsValEl.textContent = (pointer.active && eff !== base) ? `${base}→${eff}` : String(base);
+    }
+
+    /** 将移动向量量化为 8 向（0=右 … 逆时针） */
+    function octantFromDelta(dx, dy){
+      const ang = Math.atan2(dy, dx); // -PI..PI, 0=右
+      const oct = Math.round(ang / (Math.PI / 4));
+      return ((oct % 8) + 8) % 8;
+    }
+
+    /** 8 向 → 倾斜增量：上下主控 tilt，左右主控 roll，对角组合 */
+    function applyOctant(oct, strength){
+      // unit vectors for 8 dirs: E, SE, S, SW, W, NW, N, NE
+      const vx = [1, 0.707, 0, -0.707, -1, -0.707, 0, 0.707][oct];
+      const vy = [0, 0.707, 1, 0.707, 0, -0.707, -1, -0.707][oct];
+      // 屏幕下为正 y → 向下移动减小 tilt（更“躺”），向上增大
+      pointer.targetTilt = clamp(pointer.targetTilt - vy * 0.045 * strength, TILT_MIN, TILT_MAX);
+      pointer.targetRoll = clamp(pointer.targetRoll + vx * 0.05 * strength, -ROLL_MAX, ROLL_MAX);
+      pointer.dir = DIR_LABELS[oct];
+      dirValEl.textContent = pointer.dir;
+    }
+
+    function syncTiltUI(){
+      const v = Math.round(state.tilt * 100);
+      tiltInput.value = String(v);
+      tiltValEl.textContent = state.tilt.toFixed(2);
+    }
+
+    function onPointerEnter(e){
+      pointer.active = true;
+      pointer.targetTilt = state.tilt;
+      pointer.targetRoll = state.roll;
+      const rect = canvas.getBoundingClientRect();
+      pointer.lastX = e.clientX - rect.left;
+      pointer.lastY = e.clientY - rect.top;
+      canvas.classList.add('is-hover');
+      syncPxsHoverUI();
+      dirValEl.textContent = '悬停 · PXS+2';
+    }
+
+    function onPointerMove(e){
+      if (!pointer.active) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const dx = x - pointer.lastX;
+      const dy = y - pointer.lastY;
+      const dist = Math.hypot(dx, dy);
+      if (dist >= MOVE_THRESH) {
+        const strength = clamp(dist / 12, 0.35, 2.2);
+        applyOctant(octantFromDelta(dx, dy), strength);
+        pointer.lastX = x;
+        pointer.lastY = y;
+      }
+    }
+
+    function onPointerLeave(){
+      pointer.active = false;
+      // 离开：倾斜保持；像素块恢复滑条默认
+      pointer.targetTilt = state.tilt;
+      pointer.targetRoll = state.roll;
+      pointer.dir = '—';
+      dirValEl.textContent = '离开 · 倾斜保持 · 像素恢复';
+      canvas.classList.remove('is-hover');
+      syncTiltUI();
+      syncPxsHoverUI();
+    }
+
+    canvas.addEventListener('pointerenter', onPointerEnter);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerleave', onPointerLeave);
+    canvas.addEventListener('pointercancel', onPointerLeave);
+
+    let off, oC, coarse, cC;
+    function ensureOff(){
+      // 几何始终按滑条 pxs 渲染，保证环带比例不变
+      const lw = Math.ceil(w / state.pxs), lh = Math.ceil(h / state.pxs);
+      if (!off || off.width !== lw || off.height !== lh) {
+        off = document.createElement('canvas');
+        off.width = lw;
+        off.height = lh;
+        oC = off.getContext('2d', { willReadFrequently: true });
+      }
+      return { lw, lh };
+    }
+
+    function ensureCoarse(cw, ch){
+      if (!coarse || coarse.width !== cw || coarse.height !== ch) {
+        coarse = document.createElement('canvas');
+        coarse.width = cw;
+        coarse.height = ch;
+        cC = coarse.getContext('2d');
+      }
+      return { cw, ch };
+    }
+
+    function hsh(a,b){ let h = a*374761393 + b*668265263; h = (h^(h>>>13))*1274126177; return ((h^(h>>>16))&0x7fffffff)/0x7fffffff; }
+    function rX(p,a){ const c = Math.cos(a), s = Math.sin(a); return [p[0], p[1]*c - p[2]*s, p[1]*s + p[2]*c]; }
+    function rY(p,a){ const c = Math.cos(a), s = Math.sin(a); return [p[0]*c + p[2]*s, p[1], -p[0]*s + p[2]*c]; }
+    function rZ(p,a){ const c = Math.cos(a), s = Math.sin(a); return [p[0]*c - p[1]*s, p[0]*s + p[1]*c, p[2]]; }
+
+    /** 沿环周在三色间过渡，浅蓝占比更高 */
+    function gCol(u){
+      const wave = 0.5 + 0.5 * Math.sin(u * 2 + state.rotA * 0.22);
+      // 偏置：0–0.55 浅蓝↔中蓝，0.55–1 中蓝↔橙，让浅蓝更常出现
+      const t = wave * wave * 0.35 + wave * 0.65;
+      const pos = t * (PAL.length - 1);
+      const i = Math.min(Math.floor(pos), PAL.length - 2);
+      const f = pos - i;
+      const A = PAL[i], B = PAL[i + 1];
+      return [
+        Math.round(A[0] + (B[0] - A[0]) * f),
+        Math.round(A[1] + (B[1] - A[1]) * f),
+        Math.round(A[2] + (B[2] - A[2]) * f)
+      ];
+    }
+
+    /** 沿大环周改变截面半宽：有宽有窄（非等宽带） */
+    function bandHalfWidthAt(u) {
+      const bwBase = (Math.min(w, h) * state.scale * state.bandW) / state.pxs;
+      const undulations = 3;
+      const w01 = 0.5 + 0.5 * Math.cos(undulations * u + state.rotA * 0.15);
+      const narrow = 0.14;
+      const wide = 1;
+      return (bwBase * 0.5) * (narrow + (wide - narrow) * w01);
+    }
+
+    function draw(){
+      if (state.pause) { requestAnimationFrame(draw); return; }
+      const { lw, lh } = ensureOff();
+      const cx = lw/2, cy = lh/2;
+      const scl = Math.min(w,h) * state.scale;
+      const R = scl/state.pxs;
+      const fov = Math.min(w,h)*3.5/state.pxs;
+
+      // 互动中：平滑跟上鼠标目标倾斜；离开后锁定当前 tilt/roll，只继续自转
+      if (pointer.active) {
+        state.tilt = lerp(state.tilt, pointer.targetTilt, 0.18);
+        state.roll = lerp(state.roll, pointer.targetRoll, 0.18);
+        syncTiltUI();
+      }
+
+      state.rotA += state.rotSpeed;
+      state.viewA += state.viewSpeed;
+
+      oC.fillStyle = `rgb(${BGC[0]},${BGC[1]},${BGC[2]})`;
+      oC.fillRect(0,0,lw,lh);
+
+      const Q = [];
+      const uSt = Math.PI*2/RS, vSt = 2/WS;
+      for (let i = 0; i < RS; i++) {
+        const u0 = i*uSt, u1 = (i+1)*uSt, um = (u0+u1)/2;
+        for (let j = 0; j < WS; j++) {
+          const v0 = -1+j*vSt, v1 = v0+vSt;
+          const pts = [[u0,v0],[u1,v0],[u1,v1],[u0,v1]].map(([u,v]) => {
+            const halfW = bandHalfWidthAt(u);
+            let p = [R*Math.cos(u), v * halfW, R*Math.sin(u)];
+            p = rY(p, state.rotA);
+            p = rX(p, state.tilt);
+            p = rZ(p, state.roll);
+            return rY(p, state.viewA);
+          });
+          Q.push({ pts, z: (pts[0][2]+pts[1][2]+pts[2][2]+pts[3][2])/4, u: um });
+        }
+      }
+      Q.sort((a,b) => b.z - a.z);
+
+      for (const q of Q) {
+        const p2 = q.pts.map(p => { const s = fov/(fov+p[2]); return [cx+p[0]*s, cy+p[1]*s]; });
+        const c = gCol(q.u);
+        const zf = Math.max(0, Math.min(1, (q.z+R)/(2*R)));
+        const sh = 1.0 - zf * state.depthShade;
+        oC.fillStyle = `rgb(${Math.round(c[0]*sh)},${Math.round(c[1]*sh)},${Math.round(c[2]*sh)})`;
+        oC.beginPath();
+        oC.moveTo(p2[0][0], p2[0][1]);
+        for (let k = 1; k < 4; k++) oC.lineTo(p2[k][0], p2[k][1]);
+        oC.closePath();
+        oC.fill();
+      }
+
+      const id = oC.getImageData(0,0,lw,lh), d = id.data;
+      const isBg = i => Math.abs(d[i]-BGC[0])<5 && Math.abs(d[i+1]-BGC[1])<5 && Math.abs(d[i+2]-BGC[2])<5;
+
+      for (let y = 0; y < lh; y++) for (let x = 0; x < lw; x++) {
+        const i = (y*lw+x)*4;
+        if (isBg(i)) continue;
+        const r = d[i], g = d[i+1], b = d[i+2];
+        const ds = PAL.map((c,k) => ({ k, d: (r-c[0])**2+(g-c[1])**2+(b-c[2])**2 })).sort((a,b) => a.d-b.d);
+        const tot = ds[0].d + ds[1].d;
+        const ch = (tot>1 && ds[0].d>=100 && ds[0].d/tot > hsh(x,y)*0.85) ? PAL[ds[1].k] : PAL[ds[0].k];
+        d[i]=ch[0]; d[i+1]=ch[1]; d[i+2]=ch[2];
+      }
+
+      const sc = [];
+      for (let y = 1; y < lh-1; y++) for (let x = 1; x < lw-1; x++) {
+        const i = (y*lw+x)*4;
+        if (!isBg(i)) continue;
+        for (const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+          const ni = ((y+dy)*lw+(x+dx))*4;
+          if (!isBg(ni) && hsh(x*7+3, y*13+5) < 0.25) {
+            sc.push(i, d[ni], d[ni+1], d[ni+2]);
+            break;
+          }
+        }
+      }
+      for (let k = 0; k < sc.length; k += 4) {
+        d[sc[k]]=sc[k+1]; d[sc[k]+1]=sc[k+2]; d[sc[k]+2]=sc[k+3];
+      }
+
+      for (let i = 0; i < d.length; i += 4) {
+        if (Math.abs(d[i]-BGC[0])<5 && Math.abs(d[i+1]-BGC[1])<5 && Math.abs(d[i+2]-BGC[2])<5) {
+          d[i+3] = 0;
+        }
+      }
+      oC.putImageData(id, 0, 0);
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.save();
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.imageSmoothingEnabled = false;
+      const disp = displayPxs();
+      if (disp === state.pxs) {
+        // 默认：直接按几何分辨率放大
+        ctx.drawImage(off, 0, 0, lw, lh, 0, 0, canvas.width, canvas.height);
+      } else {
+        // 悬停：先 nearest 压到更粗格子，再放大 → 色块变大，环带几何不变
+        const cw = Math.ceil(w / disp), ch = Math.ceil(h / disp);
+        ensureCoarse(cw, ch);
+        cC.imageSmoothingEnabled = false;
+        cC.clearRect(0, 0, cw, ch);
+        cC.drawImage(off, 0, 0, lw, lh, 0, 0, cw, ch);
+        ctx.drawImage(coarse, 0, 0, cw, ch, 0, 0, canvas.width, canvas.height);
+      }
+      ctx.restore();
+
+      requestAnimationFrame(draw);
+    }
+
+    document.getElementById('tilt').oninput = e => {
+      state.tilt = (e.target.value|0)/100;
+      pointer.targetTilt = state.tilt;
+      document.getElementById('tiltVal').textContent = state.tilt.toFixed(2);
+    };
+    document.getElementById('rotSpeed').oninput = e => {
+      state.rotSpeed = (e.target.value|0)/1000;
+      document.getElementById('rotSpeedVal').textContent = state.rotSpeed.toFixed(3);
+    };
+    document.getElementById('viewSpeed').oninput = e => {
+      state.viewSpeed = (e.target.value|0)/1000;
+      document.getElementById('viewSpeedVal').textContent = state.viewSpeed.toFixed(3);
+    };
+    document.getElementById('scale').oninput = e => {
+      state.scale = (e.target.value|0)/100;
+      document.getElementById('scaleVal').textContent = state.scale.toFixed(2);
+    };
+    document.getElementById('bandW').oninput = e => {
+      state.bandW = (e.target.value|0)/100;
+      document.getElementById('bandWVal').textContent = state.bandW.toFixed(2);
+    };
+    document.getElementById('depthShade').oninput = e => {
+      state.depthShade = (e.target.value|0)/100;
+      document.getElementById('depthShadeVal').textContent = state.depthShade.toFixed(2);
+    };
+    document.getElementById('pxs').oninput = e => {
+      state.pxs = (e.target.value|0);
+      syncPxsHoverUI();
+    };
+    document.getElementById('pause').onchange = e => { state.pause = e.target.checked; };
+    document.getElementById('previewBg').onchange = e => {
+      const map = { white: '#fff', cream: '#E4E0D8', black: '#000' };
+      canvas.style.background = map[e.target.value] || '#fff';
+    };
+
+    document.getElementById('exportBtn').onclick = () => {
+      const link = document.createElement('a');
+      link.download = 'mobius-ring-' + Date.now() + '.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    };
+
+    requestAnimationFrame(draw);
+  })();
+  </script>
+</body>
+</html>
